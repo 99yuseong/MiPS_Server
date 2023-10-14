@@ -56,7 +56,6 @@ def triIntersect(T, v):
         if sum(abs(d) < 1e-12) > 1: # crossing with vertex
             btype = 3
         elif abs(sum(sd)) > 1: # edge crossing or inside
-
             if sum(abs(d) < 1e-12) > 0:
                 btype = 2
             else:
@@ -66,37 +65,78 @@ def triIntersect(T, v):
     
     return btype
 
-def InterpolationHRIR(HRIR_L, HRIR_R, pov, sourcePosition):
+def divideSourcePostion(SourcePosition):
+    SourcePosition = np.array(SourcePosition)
+    NumElePosition = np.zeros(19)
+    for i in range(0, len(SourcePosition)):
+        SP = -SourcePosition[i, 1]
+        index = int(SP/10 + 9)
+        NumElePosition[index] += 1
+    return NumElePosition
+
+def InterpolationHRIR(HRIR_L, HRIR_R, pov, sourcePosition, NumElePosition):
     
     ## 머리 각도와 sound source의 각도를 모두 고려한 각도 DATA
     relatedSph = pov2sph(pov, sourcePosition)
+    relatedEleDegree = relatedSph[1]*180/math.pi
+    NumMin = 0
+    NumMax = 0
+
+    if relatedEleDegree >= 0 and relatedEleDegree < 90:
+        relatedEleDegree = 90-relatedEleDegree
+        eleIndex = int(relatedEleDegree//10 + 9)
+
+        for ii in range(eleIndex-1, 19):
+            NumMax += int(NumElePosition[ii])
+        for jj in range(eleIndex+3, 19):
+            NumMin += int(NumElePosition[jj])
+    
+    elif  relatedEleDegree > 90 and relatedEleDegree <= 180:
+        relatedEleDegree = 90-relatedEleDegree
+        eleIndex = int(relatedEleDegree//10 + 9)
+
+        for ii in range(eleIndex-1, 19):
+            NumMax += int(NumElePosition[ii])
+        for jj in range(eleIndex+3, 19):
+            NumMin += int(NumElePosition[jj])
+
+    else:
+        for ii in range(9, 19):
+            NumMax += int(NumElePosition[ii])
+        for jj in range(11, 19):
+            NumMin += int(NumElePosition[jj])
+
     q = sph2cart(relatedSph[0], relatedSph[1], 1)
 
-    lsGroups = pd.read_csv('/Users/kyoungyeongo/Documents/MiPS/ls_groups.csv')
+    lsGroups = pd.read_csv('Source/csv/ls_groups.csv')
     lsGroups = np.array(lsGroups)
     inters = np.zeros(len(lsGroups))
-    posXYZ = pd.read_csv('/Users/kyoungyeongo/Documents/MiPS/SourcePositionXYZ.csv')
+    posXYZ = pd.read_csv('Source/csv/SourcePositionXYZ.csv')
     posXYZ = np.array(posXYZ)
-
     HRIR_L = np.array(HRIR_L)
     HRIR_R = np.array(HRIR_R)
 
+    NumMin = NumMin+2
+    NumMax = NumMax+2
+
     for i in range(0, len(lsGroups)):
         LS = lsGroups[i, :]
-        # print(LS)
-        pos = np.zeros((LS.size, LS.size))
+        if min(LS) >= NumMin and max(LS) <= NumMax:
+            # print(LS)
+            pos = np.zeros((LS.size, LS.size))
 
-        for ii in range (0, LS.size):
-            pos[ii, :] = posXYZ[(LS[ii]-1), :]
+            for ii in range (0, LS.size):
+                pos[ii, :] = posXYZ[(LS[ii]-1), :]
 
-        posTranspose = np.transpose(pos)
-        # pos = posXYZ[lsGroups[i, :], :]
-        inters[i] = triIntersect(posTranspose, q)
+            posTranspose = np.transpose(pos)
+            # pos = posXYZ[lsGroups[i, :], :]
+            inters[i] = triIntersect(posTranspose, q)
+            # print(i)
 
     idx = np.argwhere(inters)
     idxFind = int(idx[0])
 
-    invmtx = pd.read_csv('/Users/kyoungyeongo/Documents/MiPS/invmtx.csv')
+    invmtx = pd.read_csv('Source/csv/invmtx.csv')
     invmtx = np.array(invmtx)
     gGainsF = np.reshape(invmtx[idxFind, :], [3, 3])
     gGainsFTranspose = np.transpose(gGainsF)
@@ -153,7 +193,7 @@ def HRTFEffect(HRIR_L, HRIR_R, AudioFile):
     soundOutArray = np.empty((0, 2))
 
     # start = time.time()
-    while ind < 100:
+    while ind < 1:
     # while ind < indexNum:
 
         inBuffer = np.append(inBuffer[HopSize:], Music[ind], axis = 0)
@@ -174,6 +214,3 @@ def HRTFEffect(HRIR_L, HRIR_R, AudioFile):
         ind = ind + 1
     # end = time.time()
     # print(end-start)
-
-    sd.play(soundOutArray, FS)
-    sd.wait()
