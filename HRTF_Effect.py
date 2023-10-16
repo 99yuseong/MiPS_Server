@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.fft import fft, ifft
-import sounddevice as sd
 import pandas as pd
 import math
 import time
@@ -115,8 +114,6 @@ def InterpolationHRIR(HRIR_L, HRIR_R, pov, sourcePosition, NumElePosition):
     posXYZ = np.array(posXYZ)
     HRIR_L = np.array(HRIR_L)
     HRIR_R = np.array(HRIR_R)
-
-    NumMin = NumMin+2
     NumMax = NumMax+2
 
     for i in range(0, len(lsGroups)):
@@ -131,7 +128,6 @@ def InterpolationHRIR(HRIR_L, HRIR_R, pov, sourcePosition, NumElePosition):
             posTranspose = np.transpose(pos)
             # pos = posXYZ[lsGroups[i, :], :]
             inters[i] = triIntersect(posTranspose, q)
-            # print(i)
 
     idx = np.argwhere(inters)
     idxFind = int(idx[0])
@@ -163,8 +159,7 @@ def fftfilt(b, x):
     return y[:len(x)]    
 
 
-def HRTFEffect(HRIR_L, HRIR_R, AudioFile):
-    
+def HRTFEffect(HRIR_L, HRIR_R, AudioFile, inBuffer, outBufferL, outBufferR):
     ## Setup
     FrameSize = 1024
     FS = 44100
@@ -172,45 +167,21 @@ def HRTFEffect(HRIR_L, HRIR_R, AudioFile):
     NHop = FrameSize/HopSize
     AWin = np.hanning(FrameSize)
 
-    if AudioFile.size % HopSize != 0:
-        remain = HopSize - AudioFile.size % HopSize
-        AudioFile = np.append(AudioFile, np.zeros(remain), axis = 0)
-        
-    indexNum = int(AudioFile.size/HopSize)
+    inBuffer = np.append(inBuffer[HopSize:], AudioFile, axis = 0)
+    dataIn = inBuffer * AWin
+    
+    dataHRTF_L = fftfilt(HRIR_L, dataIn)
+    dataHRTF_R = fftfilt(HRIR_R, dataIn)
+    
+    for j in range(0, dataHRTF_L.size):
+        outBufferL[j] = outBufferL[j]+dataHRTF_L[j]
+        outBufferR[j] = outBufferR[j]+dataHRTF_R[j]
+    
+    soundOutL = outBufferL[0:HopSize, :] ## Buffer당 output
+    soundOutR = outBufferR[0:HopSize, :]
 
-    Music = np.zeros((indexNum, HopSize))
-    for i in range(0, indexNum-1):
-        Music[i] = AudioFile[HopSize*i:HopSize*(i+1)]
+    outBufferL = np.append(outBufferL[HopSize:, :], np.zeros((HopSize, 1)), axis = 0)
+    outBufferR = np.append(outBufferR[HopSize:, :], np.zeros((HopSize, 1)), axis = 0)
 
-    ## Buffer setup
-    outBufferNum = FS + FrameSize
-    outBuffer = np.zeros((outBufferNum, 2))
+    return soundOutL, soundOutR, inBuffer, outBufferL, outBufferR
 
-    inBufferNum = FrameSize
-    inBuffer = np.zeros(inBufferNum)
-        
-    ind = 0
-    soundOutArray = np.empty((0, 2))
-
-    # start = time.time()
-    while ind < 1:
-    # while ind < indexNum:
-
-        inBuffer = np.append(inBuffer[HopSize:], Music[ind], axis = 0)
-        dataIn = inBuffer * AWin
-        
-        dataHRTF_L = fftfilt(HRIR_L, dataIn)
-        dataHRTF_R = fftfilt(HRIR_R, dataIn)
-        
-        for j in range(0, dataHRTF_L.size):
-            outBuffer[j, 0] = outBuffer[j, 0]+dataHRTF_L[j]
-            outBuffer[j, 1] = outBuffer[j, 1]+dataHRTF_R[j]
-        
-        soundOut = outBuffer[0:HopSize, :] ## Buffer당 output
-
-        soundOutArray = np.append(soundOutArray, soundOut, axis = 0) ## 모아놓은 data 한 번에
-        
-        outBuffer = np.append(outBuffer[HopSize:, :], np.zeros((HopSize, 2)), axis = 0)
-        ind = ind + 1
-    # end = time.time()
-    # print(end-start)
