@@ -19,7 +19,7 @@ HRIR_L = pd.read_csv('Source/csv/HRIR_L.csv')
 HRIR_R = pd.read_csv('Source/csv/HRIR_R.csv')
 
 ## Music data
-AudioFile, FSAudio = librosa.load('Source/mp3/soundhelix_mono.mp3')
+AudioFile, FSAudio = librosa.load('Source/mp3/Music_drum.mp3')
 SamplingNum = int(AudioFile.size * FS / FSAudio)
 AudioFile = scipy.signal.resample(AudioFile, SamplingNum)
 
