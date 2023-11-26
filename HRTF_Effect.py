@@ -3,6 +3,16 @@ from scipy.fft import fft, ifft
 import pandas as pd
 import math
 import time
+import librosa
+import scipy
+
+def AudioRead(fileName, FS):
+    AudioFile, FSAudio = librosa.load(fileName)
+    SamplingNum = int(AudioFile.size * FS / FSAudio)
+    AudioFile = scipy.signal.resample(AudioFile, SamplingNum) ## Mono Audiofile
+
+    return AudioFile
+
 
 def cart2sph(x, y, z):
 
@@ -160,6 +170,7 @@ def fftfilt(b, x):
 
 
 def HRTFEffect(HRIR_L, HRIR_R, AudioFile, inBuffer, outBufferL, outBufferR):
+    start = time.time()
     ## Setup
     FrameSize = 1024
     FS = 44100
@@ -185,3 +196,9 @@ def HRTFEffect(HRIR_L, HRIR_R, AudioFile, inBuffer, outBufferL, outBufferR):
 
     return soundOutL, soundOutR, inBuffer, outBufferL, outBufferR
 
+def cocktail(music, targetMusic):
+    start = time.time()
+    musicFFT = fft(music)
+    end = time.time()
+    
+    return end-start

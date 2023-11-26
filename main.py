@@ -8,6 +8,8 @@ import time
 import numpy as np
 import sounddevice as sd
 import struct
+import json
+import math
 
 app = FastAPI()
 
@@ -19,7 +21,7 @@ HRIR_L = pd.read_csv('Source/csv/HRIR_L.csv')
 HRIR_R = pd.read_csv('Source/csv/HRIR_R.csv')
 
 ## Music data
-AudioFile, FSAudio = librosa.load('Source/mp3/Music_drum.mp3')
+AudioFile, FSAudio = librosa.load('Source/Music/Music_drum.mp3')
 SamplingNum = int(AudioFile.size * FS / FSAudio)
 AudioFile = scipy.signal.resample(AudioFile, SamplingNum)
 
@@ -42,7 +44,7 @@ SourcePosition = pd.read_csv('Source/csv/SourcePosition.csv')
 NumElePosition = HRTF_Effect.divideSourcePostion(SourcePosition)
 
 headRot = [0, 0, 0]
-soundSource = [112, 40]
+soundSource = [0, 0]
 # INTERVAL = HopSize / FS 
 INTERVAL = 0.011
 
@@ -62,22 +64,37 @@ async def websocket_endpoint(websocket: WebSocket):
             
             new_data = await asyncio.wait_for(websocket.receive_json(), timeout=0.004)
             
-            if new_data and any(abs(headRot[j] - new_data[axis]) >= 5 for j,axis in enumerate(['roll', 'pitch', 'yaw'])):
+            if new_data and any(abs(headRot[j] - new_data[axis]) >= 15 for j,axis in enumerate(['roll', 'pitch', 'yaw'])):
+                start1 = time.time()
                 headRot = [new_data['roll'], new_data['pitch'], new_data['yaw']]
                 schedule_update_HRIR()
-
+                end1 = time.time()
+                print("interpolation: ", end1 - start1)
+            
         except asyncio.TimeoutError:
             pass
         
         soundOutL, soundOutR, inBuffer, outBufferL, outBufferR = HRTF_Effect.HRTFEffect(HRIR_L_INT, HRIR_R_INT, AudioFile[i:i+HopSize], inBuffer, outBufferL, outBufferR)
         
-        left_bytes = struct.pack(f'{len(soundOutL)}f', *soundOutL.flatten())
-        right_bytes = struct.pack(f'{len(soundOutR)}f', *soundOutR.flatten())
+        # left_bytes = struct.pack(f'{len(soundOutL)}f', *soundOutL.flatten())
+        # right_bytes = struct.pack(f'{len(soundOutR)}f', *soundOutR.flatten())
 
-        await websocket.send_bytes(left_bytes + right_bytes)
+        # await websocket.send_bytes(left_bytes + right_bytes)
+        
+        left_list = np.array(soundOutL).flatten().tolist()
+        right_list = np.array(soundOutR).flatten().tolist()
+
+        json_data = {
+            "index": i / HopSize,
+            "count": 1,
+            "left": left_list,
+            "right": right_list
+        }
+        # print(i / 512)
+        await websocket.send_json(json_data)
 
         end = time.time()
-        await waitInterval(start, end)
+        # await waitInterval(start, end)
         
     await websocket.close()
     

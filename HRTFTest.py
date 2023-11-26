@@ -6,12 +6,12 @@ from scipy import signal
 import time
 
 ## HRIR Data
-HRIR_L = pd.read_csv('/Users/kyoungyeongo/Documents/MiPS/HRIR_L.csv')
-HRIR_R = pd.read_csv('/Users/kyoungyeongo/Documents/MiPS/HRIR_R.csv')
+HRIR_L = pd.read_csv('Source/csv/HRIR_L.csv')
+HRIR_R = pd.read_csv('Source/csv/HRIR_R.csv')
 
 FS = 44100
 ## Music data
-AudioFile, FSAudio = librosa.load('/Users/kyoungyeongo/Documents/MiPS/soundhelix_mono.mp3')
+AudioFile, FSAudio = librosa.load('Source/csv/soundhelix_mono.mp3')
 SamplingNum = int(AudioFile.size * FS / FSAudio)
 AudioFile = scipy.signal.resample(AudioFile, SamplingNum) ## Mono Audiofile
 
