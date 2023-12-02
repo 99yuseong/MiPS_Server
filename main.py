@@ -10,6 +10,7 @@ import sounddevice as sd
 import struct
 import json
 import math
+from multiprocessing import Queue, Process
 
 app = FastAPI()
 
@@ -46,65 +47,142 @@ NumElePosition = HRTF_Effect.divideSourcePostion(SourcePosition)
 headRot = [0, 0, 0]
 soundSource = [0, 0]
 # INTERVAL = HopSize / FS 
-INTERVAL = 0.011
+# INTERVAL = 0.011
 
 HRIR_L_INT, HRIR_R_INT = HRTF_Effect.InterpolationHRIR(HRIR_L, HRIR_R, headRot, soundSource, NumElePosition)
 
 current_task = None
 
+# def receiveData(websocket: WebSocket):
+#     receiveData_process = Process(target=receiveData_task, args=(websocket, ))
+#     receiveData_process.start()
+
+# async def receiveData_task(websocket: WebSocket):
+#     while True:
+#         try:
+#             new_data = await asyncio.wait_for(websocket.receive_json(), timeout=0.001)
+#             if not queue.empty():
+#                 queue.get()  # 기존 값이 있으면 제거함
+#             queue.put(new_data)
+#         except asyncio.TimeoutError:
+#             pass
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     global HRIR_L_INT, HRIR_R_INT, outBufferL, outBufferR, inBuffer, soundOutL, soundOutR, headRot
-    
+     
     await websocket.accept()
     
-    for i in range(0, len(AudioFile), HopSize):        
+    # dataQueue = Queue()
+    # audioQueue = Queue()
+    
+    # p = Process(target=audio_processing_task, args=(dataQueue, audioQueue))
+    # p.start()
+    # cal = 0
+    # while True:
+    #     try:
+    #         data = await asyncio.wait_for(websocket.receive_json(), timeout=0.005)
+    #         if not dataQueue.empty():
+    #             dataQueue.get()
+    #         dataQueue.put(data)
+            
+    #     except asyncio.TimeoutError:
+    #         pass
+        
+    #     if not audioQueue.empty():
+    #         json_data = audioQueue.get()
+    #             # print(json_data)
+    #         await websocket.send_json(json_data)
+    #         print("send ", cal)
+    #         cal += 1
+        
+    # p.join()
+    
+    # receiveData(websocket)
+    
+    i = 0
+    while i < len(AudioFile):    
         try:
-            start = time.time()
+            # if not queue.empty():
+            #     print(queue)
+            # if new_data is None:
+                
+            new_data = await asyncio.wait_for(websocket.receive_json(), timeout=0.001)
+            _curIdx = new_data['curIndex']
+            _headRot = new_data['headRotation']
             
-            new_data = await asyncio.wait_for(websocket.receive_json(), timeout=0.004)
-            
-            if new_data and any(abs(headRot[j] - new_data[axis]) >= 15 for j,axis in enumerate(['roll', 'pitch', 'yaw'])):
-                start1 = time.time()
-                headRot = [new_data['roll'], new_data['pitch'], new_data['yaw']]
+            if new_data and any(abs(headRot[j] - _headRot[axis]) >= 10 for j,axis in enumerate(['roll', 'pitch', 'yaw'])):
+                headRot = [_headRot['roll'], _headRot['pitch'], _headRot['yaw']]
+                print(headRot)
                 schedule_update_HRIR()
-                end1 = time.time()
-                print("interpolation: ", end1 - start1)
+                print('cal', i, 'to', _curIdx)
+                i = _curIdx
+                print("interpolation: ", i)
             
         except asyncio.TimeoutError:
             pass
         
-        soundOutL, soundOutR, inBuffer, outBufferL, outBufferR = HRTF_Effect.HRTFEffect(HRIR_L_INT, HRIR_R_INT, AudioFile[i:i+HopSize], inBuffer, outBufferL, outBufferR)
+        soundOutL, soundOutR, inBuffer, outBufferL, outBufferR = HRTF_Effect.HRTFEffect(HRIR_L_INT, HRIR_R_INT, AudioFile[i*HopSize:(i+1)*HopSize], inBuffer, outBufferL, outBufferR)
         
-        # left_bytes = struct.pack(f'{len(soundOutL)}f', *soundOutL.flatten())
-        # right_bytes = struct.pack(f'{len(soundOutR)}f', *soundOutR.flatten())
-
-        # await websocket.send_bytes(left_bytes + right_bytes)
         
         left_list = np.array(soundOutL).flatten().tolist()
         right_list = np.array(soundOutR).flatten().tolist()
 
         json_data = {
-            "index": i / HopSize,
+            "index": i,
             "count": 1,
             "left": left_list,
             "right": right_list
         }
-        # print(i / 512)
+        # print(json_data)
+        print(i)
         await websocket.send_json(json_data)
 
         end = time.time()
-        # await waitInterval(start, end)
+        i += 1
         
     await websocket.close()
     
-async def waitInterval(start, end):
-    elapsed_time = end - start
+# def audio_processing_task(dataQueue: Queue, audioQueue: Queue):
+#     global HRIR_L_INT, HRIR_R_INT, outBufferL, outBufferR, inBuffer, soundOutL, soundOutR, headRot
+    
+#     curIndex = 0
+#     headRot = [0, 0, 0]
+#     audioLen = len(AudioFile)
+    
+#     while curIndex < audioLen:
+#         if not dataQueue.empty():
+#             data = dataQueue.get()
+#             curIndex = data['curIndex'] * HopSize
+#             headRot_data = data['headRotation']
+            
+#             if data and any(abs(headRot[j] - headRot_data[axis]) >= 15 for j,axis in enumerate(['roll', 'pitch', 'yaw'])):
+#                 headRot = [headRot_data['roll'], headRot_data['pitch'], headRot_data['yaw']]
+#                 schedule_update_HRIR()
+                
+#         soundOutL, soundOutR, inBuffer, outBufferL, outBufferR = HRTF_Effect.HRTFEffect(HRIR_L_INT, HRIR_R_INT, AudioFile[curIndex:curIndex+HopSize], inBuffer, outBufferL, outBufferR)
         
-    if elapsed_time < INTERVAL:
-        await asyncio.sleep(INTERVAL - elapsed_time)
-    else:
-        print("time over", INTERVAL, elapsed_time)
+#         left_list = np.array(soundOutL).flatten().tolist()
+#         right_list = np.array(soundOutR).flatten().tolist()
+
+#         json_data = {
+#             "index": curIndex / HopSize,
+#             "count": 1,
+#             "left": left_list,
+#             "right": right_list
+#         }
+#         print(curIndex)
+#         curIndex += HopSize
+#         audioQueue.put(json_data)
+#             # print(data)
+    
+# async def waitInterval(start, end):
+#     elapsed_time = end - start
+        
+#     if elapsed_time < INTERVAL:
+#         await asyncio.sleep(INTERVAL - elapsed_time)
+#     else:
+#         print("time over", INTERVAL, elapsed_time)
         
 async def update_HRIR():
     global HRIR_L_INT, HRIR_R_INT
