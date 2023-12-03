@@ -4,6 +4,10 @@ from scipy import signal
 import numpy as np
 import os
 
+FrameSize = 1024
+FS = 44100
+HopSize = int(FrameSize/2)
+
 ## HRIR Data
 HRIR_L = pd.read_csv('Source/csv/HRIR_L.csv')
 HRIR_R = pd.read_csv('Source/csv/HRIR_R.csv')
@@ -11,20 +15,18 @@ HRIR_R = pd.read_csv('Source/csv/HRIR_R.csv')
 SourcePosition = pd.read_csv('Source/csv/SourcePosition.csv')
 NumElePosition = HRTF_Effect.divideSourcePostion(SourcePosition)
 
-FS = 44100
 ## Music data
 fileDir = 'Source/Music/'
 fileList = os.listdir(fileDir)
-print(fileList)
 # fileList = np.delete(fileList, 0, axis = 0)
-print(fileList)
+
 InstrunmentList = []
 
 for i in range(0, len(fileList)):
     AudioData = HRTF_Effect.AudioRead(fileDir+fileList[i], FS)
     # AudioFile = np.concatenate((AudioFile, AudioData), axis = 1)
     if i == 0:
-         AudioFile = AudioData
+        AudioFile = AudioData
         #  originGain = AudioFile[0]
     else:
         AudioFile = np.vstack((AudioFile, AudioData))
@@ -32,14 +34,16 @@ for i in range(0, len(fileList)):
 
     InstrunmentList = np.append(InstrunmentList, fileList[i].split('.')[0])
 
-time = HRTF_Effect.cocktail(AudioFile[1, :], AudioFile[2, :])
-print(time)
+outBufferLArray = [np.zeros((FS + FrameSize, 1)) for _ in range(len(fileList))]
+outBufferRArray = [np.zeros((FS + FrameSize, 1)) for _ in range(len(fileList))]
+inBufferArray = [np.zeros(FrameSize) for _ in range(len(fileList))]
+soundOutLArray = [np.zeros((HopSize, 1)) for _ in range(len(fileList))]
+soundOutRArray = [np.zeros((HopSize, 1)) for _ in range(len(fileList))]
 
-FrameSize = 1024
-HopSize = int(FrameSize/2)
+time = HRTF_Effect.cocktail(AudioFile[1, :], AudioFile[2, :])
 
 if len(AudioFile[0, :]) % HopSize != 0:
-        remain = HopSize - len(AudioFile) % HopSize
+    remain = HopSize - len(AudioFile) % HopSize
 AudioFile = np.concatenate((AudioFile, np.zeros((len(fileList), remain))), axis = 1)
 
 indexNum = int(len(AudioFile[0, :])/HopSize)
@@ -52,8 +56,7 @@ soundOutArray = []
 ## Head Rotation Data = Yaw/ Pitch/ Roll (Deg), Sound source Data = Azimuth/ Elevation (Deg)
 headRot = [20, 10, 60]
 soundSource = np.empty((len(fileList), 2))
-print(soundSource.shape)
-print(len(fileList))
+
 soundSource[0, 0] = 0       
 soundSource[0, 1] = 90      # electric guitar
 soundSource[1, 0] = 0

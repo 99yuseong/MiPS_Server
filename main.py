@@ -11,54 +11,24 @@ import struct
 import json
 import math
 from multiprocessing import Queue, Process
+from dataSet import indexNum, HopSize, AudioFile, headRot, soundSource, NumElePosition, HRIR_L, HRIR_R, FS, FrameSize, fileList, outBufferLArray, outBufferRArray, inBufferArray, soundOutLArray, soundOutRArray
 
 app = FastAPI()
 
-FrameSize = 1024
-FS = 44100
-HopSize = int(FrameSize/2)
-
-HRIR_L = pd.read_csv('Source/csv/HRIR_L.csv')
-HRIR_R = pd.read_csv('Source/csv/HRIR_R.csv')
-
-## Music data
-AudioFile, FSAudio = librosa.load('Source/Music/Music_drum.mp3')
-SamplingNum = int(AudioFile.size * FS / FSAudio)
-AudioFile = scipy.signal.resample(AudioFile, SamplingNum)
-
-remainder = len(AudioFile) % HopSize
-if remainder != 0:
-    pad_length = HopSize - remainder
-    AudioFile = np.pad(AudioFile, (0, pad_length), 'constant', constant_values = 0)
-
-## Buffer setup
-outBufferL = np.zeros((FS + FrameSize, 1))
-outBufferR = np.zeros((FS + FrameSize, 1))
-
-inBuffer = np.zeros(FrameSize)
-    
-soundOutL = np.zeros((HopSize, 1))
-soundOutR = np.zeros((HopSize, 1))
-
-## Source Position
-SourcePosition = pd.read_csv('Source/csv/SourcePosition.csv')
-NumElePosition = HRTF_Effect.divideSourcePostion(SourcePosition)
-
-headRot = [0, 0, 0]
-soundSource = [0, 0]
-
-HRIR_L_INT, HRIR_R_INT = HRTF_Effect.InterpolationHRIR(HRIR_L, HRIR_R, headRot, soundSource, NumElePosition)
+HRIR_L_INT, HRIR_R_INT = HRTF_Effect.InterpolationHRIR(HRIR_L, HRIR_R, headRot, soundSource[0], NumElePosition)
 
 current_task = None
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    global HRIR_L_INT, HRIR_R_INT, outBufferL, outBufferR, inBuffer, soundOutL, soundOutR, headRot
+    global HRIR_L_INT, HRIR_R_INT, headRot
      
     await websocket.accept()
     
     i = 0
-    while i < len(AudioFile):    
+    maxI = int(len(AudioFile[0]) / HopSize)
+    
+    while i < maxI:   
         try:    
             new_data = await asyncio.wait_for(websocket.receive_json(), timeout=0.001)
             _curIdx = new_data['curIndex']
@@ -72,8 +42,13 @@ async def websocket_endpoint(websocket: WebSocket):
         except asyncio.TimeoutError:
             pass
         
-        json_data = get_HRTFEffect(i)
+        start = time.time()
         
+        json_data = await multi_process_HRTFEffect(i)
+        # json_data = await single_process_HRTFEffect(i)
+        
+        end = time.time()
+        print(i, "total time: ", end-start)
         await websocket.send_json(json_data)
 
         i += 1
@@ -83,8 +58,12 @@ async def websocket_endpoint(websocket: WebSocket):
 async def update_HRIR():
     global HRIR_L_INT, HRIR_R_INT
     
-    HRIR_L_INT, HRIR_R_INT = HRTF_Effect.InterpolationHRIR(HRIR_L, HRIR_R, headRot, soundSource, NumElePosition)
-    
+    HRIR_L_INT, HRIR_R_INT = HRTF_Effect.InterpolationHRIR(HRIR_L, 
+                                                           HRIR_R, 
+                                                           headRot, 
+                                                           soundSource[0], 
+                                                           NumElePosition)
+
 def schedule_update_HRIR():
     global current_task
     
@@ -93,13 +72,39 @@ def schedule_update_HRIR():
     
     current_task = asyncio.create_task(update_HRIR())
     
-def get_HRTFEffect(i):
-    global HRIR_L_INT, HRIR_R_INT, outBufferL, outBufferR, inBuffer, soundOutL, soundOutR
+async def process_audio(instrumentIndex, i):
+    global HRIR_L_INT, HRIR_R_INT, outBufferLArray, outBufferRArray, inBufferArray, soundOutLArray, soundOutRArray, AudioFile
+    start = time.time()
+    j = instrumentIndex
+    outBufferL = outBufferLArray[j]
+    outBufferR = outBufferRArray[j]
+    inBuffer = inBufferArray[j]
     
-    soundOutL, soundOutR, inBuffer, outBufferL, outBufferR = HRTF_Effect.HRTFEffect(HRIR_L_INT, HRIR_R_INT, AudioFile[i*HopSize:(i+1)*HopSize], inBuffer, outBufferL, outBufferR)
+    soundOutL, soundOutR, inBuffer, outBufferL, outBufferR = await HRTF_Effect.HRTFEffect(HRIR_L_INT, HRIR_R_INT, AudioFile[j][i*HopSize:(i+1)*HopSize], inBuffer, outBufferL, outBufferR)
+    
+    soundOutLArray[j] = soundOutL
+    soundOutRArray[j] = soundOutR
+    inBufferArray[j] = inBuffer
+    outBufferLArray[j] = outBufferL
+    outBufferRArray[j] = outBufferR
+    end = time.time()
+    print("process audio: ", end-start)
+    
+
+async def single_process_HRTFEffect(i):
+    global HRIR_L_INT, HRIR_R_INT, outBufferLArray, outBufferRArray, inBufferArray, soundOutLArray, soundOutRArray, AudioFile
+    
+    # 0: electric guitar
+    # 1: piano
+    # 2: vocal
+    # 3: other instrunments
+    # 4: drum
+    # 5: bass
+    instrumentIndex = 4
+    process_audio(instrumentIndex, i)
         
-    left_list = np.array(soundOutL).flatten().tolist()
-    right_list = np.array(soundOutR).flatten().tolist()
+    left_list = np.array(soundOutLArray[instrumentIndex]).flatten().tolist()
+    right_list = np.array(soundOutRArray[instrumentIndex]).flatten().tolist()
 
     json_data = {
         "index": i,
@@ -108,3 +113,25 @@ def get_HRTFEffect(i):
     }
     
     return json_data
+
+async def multi_process_HRTFEffect(i):
+    global soundOutLArray, soundOutRArray, AudioFile
+
+    tasks = []
+    for index in range(len(AudioFile)):
+        task = asyncio.create_task(process_audio(index, i))
+        tasks.append(task)
+    
+    await asyncio.gather(*tasks)
+    
+    _left_list = [sum(sum(x)) for x in zip(*soundOutLArray)]
+    _right_list = [sum(sum(x)) for x in zip(*soundOutRArray)]
+
+    json_data = {
+        "index": i,
+        "left": _left_list,
+        "right": _right_list
+    }
+    
+    return json_data
+    

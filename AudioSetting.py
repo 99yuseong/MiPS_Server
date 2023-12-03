@@ -52,12 +52,12 @@ if __name__ == "__main__":
     num_cores = len(fileList)
     pool = Pool(num_cores)
     
-    start = time.time()
+    # start = time.time()
     fMainProcessing = partial(mainProcessing, indexNum, HopSize, AudioFile, headRot, soundSource, NumElePosition, HRIR_L, HRIR_R, FS, FrameSize)
     output = pool.map(fMainProcessing, range(0, len(fileList)))
-    end = time.time()
+    # end = time.time()
 
-    print(end-start)
+    # print(end-start)
     OUTPUT = np.asarray(output)
 
     OUT = np.zeros((indexLength*HopSize, 2))

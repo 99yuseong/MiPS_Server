@@ -13,7 +13,6 @@ def AudioRead(fileName, FS):
 
     return AudioFile
 
-
 def cart2sph(x, y, z):
 
     radius = np.sqrt(x**2 + y**2 + z**2)  # radius
@@ -169,7 +168,7 @@ def fftfilt(b, x):
     return y[:len(x)]    
 
 
-def HRTFEffect(HRIR_L, HRIR_R, AudioFile, inBuffer, outBufferL, outBufferR):
+async def HRTFEffect(HRIR_L, HRIR_R, AudioFile, inBuffer, outBufferL, outBufferR):
     start = time.time()
     ## Setup
     FrameSize = 1024
