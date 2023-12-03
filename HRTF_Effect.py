@@ -6,6 +6,15 @@ import time
 import librosa
 import scipy
 
+## Interpolation Data
+lsGroups = np.array(pd.read_csv('Source/csv/ls_groups.csv'))
+posXYZ =  np.array(pd.read_csv('Source/csv/SourcePositionXYZ.csv'))
+invmtx =  np.array(pd.read_csv('Source/csv/invmtx.csv'))
+
+FrameSize = 1024
+HopSize = int(FrameSize/2)
+AWin = np.hanning(FrameSize)
+
 def AudioRead(fileName, FS):
     AudioFile, FSAudio = librosa.load(fileName)
     SamplingNum = int(AudioFile.size * FS / FSAudio)
@@ -74,7 +83,6 @@ def triIntersect(T, v):
     return btype
 
 def divideSourcePostion(SourcePosition):
-    SourcePosition = np.array(SourcePosition)
     NumElePosition = np.zeros(19)
     for i in range(0, len(SourcePosition)):
         SP = -SourcePosition[i, 1]
@@ -83,6 +91,7 @@ def divideSourcePostion(SourcePosition):
     return NumElePosition
 
 def InterpolationHRIR(HRIR_L, HRIR_R, pov, sourcePosition, NumElePosition):
+    global lsGroups, posXYZ, invmtx
     
     ## 머리 각도와 sound source의 각도를 모두 고려한 각도 DATA
     relatedSph = pov2sph(pov, sourcePosition)
@@ -116,13 +125,7 @@ def InterpolationHRIR(HRIR_L, HRIR_R, pov, sourcePosition, NumElePosition):
 
     q = sph2cart(relatedSph[0], relatedSph[1], 1)
 
-    lsGroups = pd.read_csv('Source/csv/ls_groups.csv')
-    lsGroups = np.array(lsGroups)
     inters = np.zeros(len(lsGroups))
-    posXYZ = pd.read_csv('Source/csv/SourcePositionXYZ.csv')
-    posXYZ = np.array(posXYZ)
-    HRIR_L = np.array(HRIR_L)
-    HRIR_R = np.array(HRIR_R)
     NumMax = NumMax+2
 
     for i in range(0, len(lsGroups)):
@@ -141,8 +144,6 @@ def InterpolationHRIR(HRIR_L, HRIR_R, pov, sourcePosition, NumElePosition):
     idx = np.argwhere(inters)
     idxFind = int(idx[0])
 
-    invmtx = pd.read_csv('Source/csv/invmtx.csv')
-    invmtx = np.array(invmtx)
     gGainsF = np.reshape(invmtx[idxFind, :], [3, 3])
     gGainsFTranspose = np.transpose(gGainsF)
     gGainsFCir = np.dot(gGainsFTranspose, q)
@@ -155,7 +156,6 @@ def InterpolationHRIR(HRIR_L, HRIR_R, pov, sourcePosition, NumElePosition):
     return HRIR_L, HRIR_R
 
 def fftfilt(b, x):
-    b = np.array(b)
     nfft = 2 ** np.ceil(np.log2(len(x)+len(b)-1)).astype(int)
 
     X = fft(x, n=nfft)
@@ -168,14 +168,29 @@ def fftfilt(b, x):
     return y[:len(x)]    
 
 
-async def HRTFEffect(HRIR_L, HRIR_R, AudioFile, inBuffer, outBufferL, outBufferR):
-    start = time.time()
-    ## Setup
-    FrameSize = 1024
-    FS = 44100
-    HopSize = int(FrameSize/2)
-    NHop = FrameSize/HopSize
-    AWin = np.hanning(FrameSize)
+def HRTFEffect(HRIR_L, HRIR_R, AudioFile, inBuffer, outBufferL, outBufferR):
+    global FrameSize, HopSize, AWin
+    
+    inBuffer = np.append(inBuffer[HopSize:], AudioFile, axis = 0)
+    dataIn = inBuffer * AWin
+    
+    dataHRTF_L = fftfilt(HRIR_L, dataIn)
+    dataHRTF_R = fftfilt(HRIR_R, dataIn)
+    
+    for j in range(0, dataHRTF_L.size):
+        outBufferL[j] = outBufferL[j]+dataHRTF_L[j]
+        outBufferR[j] = outBufferR[j]+dataHRTF_R[j]
+    
+    soundOutL = outBufferL[0:HopSize, :] ## Buffer당 output
+    soundOutR = outBufferR[0:HopSize, :]
+
+    outBufferL = np.append(outBufferL[HopSize:, :], np.zeros((HopSize, 1)), axis = 0)
+    outBufferR = np.append(outBufferR[HopSize:, :], np.zeros((HopSize, 1)), axis = 0)
+
+    return soundOutL, soundOutR, inBuffer, outBufferL, outBufferR
+
+async def HRTFEffect_async(HRIR_L, HRIR_R, AudioFile, inBuffer, outBufferL, outBufferR):
+    global FrameSize, HopSize, AWin
 
     inBuffer = np.append(inBuffer[HopSize:], AudioFile, axis = 0)
     dataIn = inBuffer * AWin
@@ -194,6 +209,7 @@ async def HRTFEffect(HRIR_L, HRIR_R, AudioFile, inBuffer, outBufferL, outBufferR
     outBufferR = np.append(outBufferR[HopSize:, :], np.zeros((HopSize, 1)), axis = 0)
 
     return soundOutL, soundOutR, inBuffer, outBufferL, outBufferR
+
 
 def cocktail(music, targetMusic):
     start = time.time()

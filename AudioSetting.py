@@ -6,8 +6,7 @@ from multiprocessing import Pool
 from functools import partial
 from dataSet import indexNum, HopSize, AudioFile, headRot, soundSource, NumElePosition, HRIR_L, HRIR_R, FS, FrameSize, fileList
 
-indexLength = 2000
-
+indexLength = 1000
 
 def mainProcessing(indexNum, HopSize, AudioFile, headRot, soundSource, NumElePosition, HRIR_L, HRIR_R, FS, FrameSize, j):
 
@@ -32,11 +31,12 @@ def mainProcessing(indexNum, HopSize, AudioFile, headRot, soundSource, NumElePos
     HRIR_L_INT, HRIR_R_INT = HRTF_Effect.InterpolationHRIR(HRIR_L, HRIR_R, headRot, soundSource[j, :], NumElePosition)
 
     while ind < indexLength:
-
+        start = time.time()
         soundOutL, soundOutR, inBuffer, outBufferL, outBufferR = HRTF_Effect.HRTFEffect(HRIR_L_INT, HRIR_R_INT, Music[ind], inBuffer, outBufferL, outBufferR)
         soundOutLArray = np.append(soundOutLArray, soundOutL) ## 모아놓은 data 한 번에
         soundOutRArray = np.append(soundOutRArray, soundOutR) ## 모아놓은 data 한 번에
-
+        end = time.time()
+        print("ind: ", ind, "time: ", end-start)
         ind = ind+1
 
     AudioL = soundOutLArray
@@ -52,12 +52,13 @@ if __name__ == "__main__":
     num_cores = len(fileList)
     pool = Pool(num_cores)
     
-    # start = time.time()
+    start = time.time()
     fMainProcessing = partial(mainProcessing, indexNum, HopSize, AudioFile, headRot, soundSource, NumElePosition, HRIR_L, HRIR_R, FS, FrameSize)
     output = pool.map(fMainProcessing, range(0, len(fileList)))
-    # end = time.time()
+    end = time.time()
+    # print(output)
 
-    # print(end-start)
+    print(end-start)
     OUTPUT = np.asarray(output)
 
     OUT = np.zeros((indexLength*HopSize, 2))

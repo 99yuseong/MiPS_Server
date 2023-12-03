@@ -9,16 +9,15 @@ FS = 44100
 HopSize = int(FrameSize/2)
 
 ## HRIR Data
-HRIR_L = pd.read_csv('Source/csv/HRIR_L.csv')
-HRIR_R = pd.read_csv('Source/csv/HRIR_R.csv')
+HRIR_L = np.array(pd.read_csv('Source/csv/HRIR_L.csv'))
+HRIR_R = np.array(pd.read_csv('Source/csv/HRIR_R.csv'))
 
-SourcePosition = pd.read_csv('Source/csv/SourcePosition.csv')
+SourcePosition = np.array(pd.read_csv('Source/csv/SourcePosition.csv'))
 NumElePosition = HRTF_Effect.divideSourcePostion(SourcePosition)
 
 ## Music data
 fileDir = 'Source/Music/'
 fileList = os.listdir(fileDir)
-# fileList = np.delete(fileList, 0, axis = 0)
 
 InstrunmentList = []
 
@@ -48,24 +47,19 @@ AudioFile = np.concatenate((AudioFile, np.zeros((len(fileList), remain))), axis 
 
 indexNum = int(len(AudioFile[0, :])/HopSize)
 
-MusicArray = []
-AudioL = []
-AudioR = []
-soundOutArray = []
-
 ## Head Rotation Data = Yaw/ Pitch/ Roll (Deg), Sound source Data = Azimuth/ Elevation (Deg)
-headRot = [20, 10, 60]
+headRot = [0, 0, 0]
 soundSource = np.empty((len(fileList), 2))
 
 soundSource[0, 0] = 0       
-soundSource[0, 1] = 90      # electric guitar
+soundSource[0, 1] = 0      # electric guitar
 soundSource[1, 0] = 0
-soundSource[1, 1] = 90      # piano
-soundSource[2, 0] = 300
-soundSource[2, 1] = 90      # vocal
-soundSource[3, 0] = 0
-soundSource[3, 1] = 90      # other instrunments
-soundSource[4, 0] = 0
-soundSource[4, 1] = 90      # drum
-soundSource[5, 0] = 0
-soundSource[5, 1] = 90      # bass
+soundSource[1, 1] = 0      # piano
+soundSource[2, 0] = 0
+soundSource[2, 1] = 0      # vocal
+# soundSource[3, 0] = 0
+# soundSource[3, 1] = 0      # other instrunments
+# soundSource[4, 0] = 0
+# soundSource[4, 1] = 90      # drum
+# soundSource[5, 0] = 0
+# soundSource[5, 1] = 90      # bass
