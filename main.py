@@ -15,6 +15,8 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Manager
 from dataSet import indexNum, HopSize, AudioFile, headRot, soundSource, NumElePosition, HRIR_L, HRIR_R, FS, FrameSize, fileList, outBufferLArray, outBufferRArray, inBufferArray, soundOutLArray, soundOutRArray
+import yappi
+from line_profiler import LineProfiler
 
 app = FastAPI()
 
@@ -23,7 +25,7 @@ HRIR_L_INT, HRIR_R_INT = HRTF_Effect.InterpolationHRIR(HRIR_L, HRIR_R, headRot, 
 current_task = None
 executor_thread = ThreadPoolExecutor(max_workers=len(AudioFile))
 executor_process = ProcessPoolExecutor(max_workers=len(AudioFile))
-loop = asyncio.get_event_loop()
+# loop = asyncio.get_event_loop()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -46,14 +48,14 @@ async def websocket_endpoint(websocket: WebSocket):
         except asyncio.TimeoutError:
             pass
         
-        # json_data = await single_HRTFEffect(i)
+        # json_data = await single_HRTFEffect(0, i)
         json_data = await async_HRTFEffect(i)
         # json_data = await asyncio.to_thread(multi_thread_HRTFEffect, i)
         # json_data = await loop.run_in_executor(executor_process, multi_process_HRTFEffect, i)
+        await websocket.send_json(json_data)
         
         end = time.time()
         print(i, "total time: ", end-start)
-        await websocket.send_json(json_data)
 
         i += 1
         
@@ -81,7 +83,7 @@ def schedule_update_HRIR():
     
 async def processing_audio_async(instrumentIndex, i):
     global HRIR_L_INT, HRIR_R_INT, AudioFile
-    # start = time.time()
+    start = time.time()
     j = instrumentIndex
     
     soundOutLArray[j], soundOutRArray[j], inBufferArray[j], outBufferLArray[j], outBufferRArray[j] = await HRTF_Effect.HRTFEffect_async(HRIR_L_INT, 
@@ -90,12 +92,12 @@ async def processing_audio_async(instrumentIndex, i):
                                                                                                                                         inBufferArray[j], 
                                                                                                                                         outBufferLArray[j], 
                                                                                                                                         outBufferRArray[j])
-    # end = time.time()
-    # print("at: ", j, "process audio: ", end-start)
+    end = time.time()
+    print("at: ", j, "process audio: ", end-start)
     
 def processing_audio(instrumentIndex, i):
     global HRIR_L_INT, HRIR_R_INT, outBufferLArray, outBufferRArray, inBufferArray, soundOutLArray, soundOutRArray, AudioFile
-    # start = time.time()
+    start = time.time()
     j = instrumentIndex
     
     soundOutLArray[j], soundOutRArray[j], inBufferArray[j], outBufferLArray[j], outBufferRArray[j] = HRTF_Effect.HRTFEffect(HRIR_L_INT, 
@@ -105,8 +107,8 @@ def processing_audio(instrumentIndex, i):
                                                                                                                             outBufferLArray[j], 
                                                                                                                             outBufferRArray[j])
     
-    # end = time.time()
-    # print("at: ", j, "process audio: ", end-start)
+    end = time.time()
+    print("at: ", j, "process audio: ", end-start)
     
 def processing_audio_multi(instrumentIndex, i, soundOutLArray, soundOutRArray, HRIR_L_INT, HRIR_R_INT):
     global outBufferLArray, outBufferRArray, inBufferArray, AudioFile
@@ -123,7 +125,7 @@ def processing_audio_multi(instrumentIndex, i, soundOutLArray, soundOutRArray, H
     # end = time.time()
     # print("at: ", j, "process audio: ", end-start)
 
-async def single_HRTFEffect(i):
+async def single_HRTFEffect(instrumentIndex, i):
     global HRIR_L_INT, HRIR_R_INT, outBufferLArray, outBufferRArray, inBufferArray, soundOutLArray, soundOutRArray, AudioFile
     
     # 0: electric guitar
@@ -132,7 +134,6 @@ async def single_HRTFEffect(i):
     # 3: other instrunments
     # 4: drum
     # 5: bass
-    instrumentIndex = 1
     processing_audio(instrumentIndex, i)
         
     left_list = np.array(soundOutLArray[instrumentIndex]).flatten().tolist()
@@ -156,8 +157,12 @@ async def async_HRTFEffect(i):
     
     await asyncio.gather(*tasks)
     # start = time.time()
-    _left_list = [sum(sum(x)) for x in zip(*soundOutLArray)]
-    _right_list = [sum(sum(x)) for x in zip(*soundOutRArray)]
+    
+    _left_list = np.array(soundOutLArray).sum(axis=0).tolist()
+    _right_list = np.array(soundOutRArray).sum(axis=0).tolist()
+    
+    # _left_list = [sum(sum(x)) for x in zip(*soundOutLArray)]
+    # _right_list = [sum(sum(x)) for x in zip(*soundOutRArray)]
     # end = time.time()
     
     # print("adding: ", end-start)
@@ -179,8 +184,10 @@ def multi_thread_HRTFEffect(i):
         future.result()
 
     # start = time.time()
-    _left_list = [sum(sum(x)) for x in zip(*soundOutLArray)]
-    _right_list = [sum(sum(x)) for x in zip(*soundOutRArray)]
+    _left_list = np.array(soundOutLArray).sum(axis=0).tolist()
+    _right_list = np.array(soundOutRArray).sum(axis=0).tolist()
+    # _left_list = [sum(sum(x)) for x in zip(*soundOutLArray)]
+    # _right_list = [sum(sum(x)) for x in zip(*soundOutRArray)]
     # end = time.time()
 
     # print("adding: ", end-start)
@@ -223,3 +230,43 @@ def multi_process_HRTFEffect(i):
         }
 
         return json_data
+    
+async def test_async():
+    i = 0
+    maxI = int(len(AudioFile[0]) / HopSize)
+    # maxI = 100
+    
+    while i < maxI: 
+        # json_data = await async_HRTFEffect(i)
+        # json_data = await asyncio.to_thread(multi_thread_HRTFEffect, i)
+        processing_audio(0, i)
+        
+        i += 1
+
+def test():
+    i = 0
+    maxI = int(len(AudioFile[0]) / HopSize)
+    # maxI = 100
+    
+    while i < maxI: 
+        # json_data = await async_HRTFEffect(i)
+        # json_data = await asyncio.to_thread(multi_thread_HRTFEffect, i)
+        processing_audio(0, i)
+        
+        i += 1
+
+# if __name__ == '__main__':
+#     yappi.set_clock_type("WALL")
+#     with yappi.run():
+#         asyncio.run(test_async())
+#     yappi.get_func_stats().print_all()
+    
+if __name__ == '__main__':
+    line_profiler = LineProfiler()
+    line_profiler.add_function(HRTF_Effect.HRTFEffect)
+
+    lp_wrapper = line_profiler(test)
+
+    lp_wrapper()
+
+    line_profiler.print_stats()

@@ -14,6 +14,7 @@ invmtx =  np.array(pd.read_csv('Source/csv/invmtx.csv'))
 FrameSize = 1024
 HopSize = int(FrameSize/2)
 AWin = np.hanning(FrameSize)
+nfft = 2 ** np.ceil(np.log2(1024+256-1)).astype(int)
 
 def AudioRead(fileName, FS):
     AudioFile, FSAudio = librosa.load(fileName)
@@ -156,8 +157,8 @@ def InterpolationHRIR(HRIR_L, HRIR_R, pov, sourcePosition, NumElePosition):
     return HRIR_L, HRIR_R
 
 def fftfilt(b, x):
-    nfft = 2 ** np.ceil(np.log2(len(x)+len(b)-1)).astype(int)
-
+    global nfft
+    
     X = fft(x, n=nfft)
     B = fft(b, n=nfft)
 
@@ -177,15 +178,14 @@ def HRTFEffect(HRIR_L, HRIR_R, AudioFile, inBuffer, outBufferL, outBufferR):
     dataHRTF_L = fftfilt(HRIR_L, dataIn)
     dataHRTF_R = fftfilt(HRIR_R, dataIn)
     
-    for j in range(0, dataHRTF_L.size):
-        outBufferL[j] = outBufferL[j]+dataHRTF_L[j]
-        outBufferR[j] = outBufferR[j]+dataHRTF_R[j]
+    outBufferL[:1024] += dataHRTF_L[:1024]
+    outBufferR[:1024] += dataHRTF_R[:1024]
     
-    soundOutL = outBufferL[0:HopSize, :] ## Buffer당 output
-    soundOutR = outBufferR[0:HopSize, :]
-
-    outBufferL = np.append(outBufferL[HopSize:, :], np.zeros((HopSize, 1)), axis = 0)
-    outBufferR = np.append(outBufferR[HopSize:, :], np.zeros((HopSize, 1)), axis = 0)
+    soundOutL = outBufferL[0:HopSize]
+    soundOutR = outBufferR[0:HopSize]
+    
+    outBufferL = np.append(outBufferL[HopSize:], np.zeros((HopSize)), axis = 0)
+    outBufferR = np.append(outBufferR[HopSize:], np.zeros((HopSize)), axis = 0)
 
     return soundOutL, soundOutR, inBuffer, outBufferL, outBufferR
 
@@ -198,15 +198,14 @@ async def HRTFEffect_async(HRIR_L, HRIR_R, AudioFile, inBuffer, outBufferL, outB
     dataHRTF_L = fftfilt(HRIR_L, dataIn)
     dataHRTF_R = fftfilt(HRIR_R, dataIn)
     
-    for j in range(0, dataHRTF_L.size):
-        outBufferL[j] = outBufferL[j]+dataHRTF_L[j]
-        outBufferR[j] = outBufferR[j]+dataHRTF_R[j]
+    outBufferL[:1024] += dataHRTF_L[:1024]
+    outBufferR[:1024] += dataHRTF_R[:1024]
     
-    soundOutL = outBufferL[0:HopSize, :] ## Buffer당 output
-    soundOutR = outBufferR[0:HopSize, :]
-
-    outBufferL = np.append(outBufferL[HopSize:, :], np.zeros((HopSize, 1)), axis = 0)
-    outBufferR = np.append(outBufferR[HopSize:, :], np.zeros((HopSize, 1)), axis = 0)
+    soundOutL = outBufferL[0:HopSize]
+    soundOutR = outBufferR[0:HopSize]
+    
+    outBufferL = np.append(outBufferL[HopSize:], np.zeros((HopSize)), axis = 0)
+    outBufferR = np.append(outBufferR[HopSize:], np.zeros((HopSize)), axis = 0)
 
     return soundOutL, soundOutR, inBuffer, outBufferL, outBufferR
 

@@ -33,11 +33,17 @@ for i in range(0, len(fileList)):
 
     InstrunmentList = np.append(InstrunmentList, fileList[i].split('.')[0])
 
-outBufferLArray = [np.zeros((FS + FrameSize, 1)) for _ in range(len(fileList))]
-outBufferRArray = [np.zeros((FS + FrameSize, 1)) for _ in range(len(fileList))]
+# outBufferLArray = [np.zeros((HopSize + FrameSize, 1)) for _ in range(len(fileList))]
+# outBufferRArray = [np.zeros((HopSize + FrameSize, 1)) for _ in range(len(fileList))]
+# inBufferArray = [np.zeros(FrameSize) for _ in range(len(fileList))]
+# soundOutLArray = [np.zeros((HopSize, 1)) for _ in range(len(fileList))]
+# soundOutRArray = [np.zeros((HopSize, 1)) for _ in range(len(fileList))]
+
+outBufferLArray = [np.zeros((HopSize + FrameSize)) for _ in range(len(fileList))]
+outBufferRArray = [np.zeros((HopSize + FrameSize)) for _ in range(len(fileList))]
 inBufferArray = [np.zeros(FrameSize) for _ in range(len(fileList))]
-soundOutLArray = [np.zeros((HopSize, 1)) for _ in range(len(fileList))]
-soundOutRArray = [np.zeros((HopSize, 1)) for _ in range(len(fileList))]
+soundOutLArray = [np.zeros((HopSize)) for _ in range(len(fileList))]
+soundOutRArray = [np.zeros((HopSize)) for _ in range(len(fileList))]
 
 time = HRTF_Effect.cocktail(AudioFile[1, :], AudioFile[2, :])
 
